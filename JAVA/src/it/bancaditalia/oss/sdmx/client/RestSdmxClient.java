@@ -20,14 +20,7 @@
 */
 package it.bancaditalia.oss.sdmx.client;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -240,6 +233,12 @@ public class RestSdmxClient implements GenericSDMXClient{
 		final String sourceMethod = "runQuery";
 		logger.entering(sourceClass, sourceMethod);
 
+        T rst = queryCache(parser, query);
+        if (rst != null) {
+            logger.info("Loading " + query + "from local cache");
+            return rst;
+        }
+
 		URLConnection conn = null;
 		URL url = null;
 		logger.info("Contacting web service with query: " + query);
@@ -399,8 +398,40 @@ public class RestSdmxClient implements GenericSDMXClient{
 	protected URL buildCodelistQuery(String codeList, String agency, String version) throws SdmxException {
 		return Sdmx21Queries.createCodelistQuery(endpoint, codeList, agency, version).buildSdmx21Query();
 	}
-	
+
 	private static boolean isRedirection(int code) {
 		return code >= HttpURLConnection.HTTP_MULT_CHOICE && code <= HttpURLConnection.HTTP_SEE_OTHER;
 	}
+
+    private final <T> T queryCache(Parser<T> parser, URL query) throws SdmxException {
+
+        URL url = query;
+        String resource = url.getPath().replaceAll(endpoint.getPath() + "/", "");
+
+        if (resource.startsWith("CompactData")) {
+            return null;
+        }
+
+        File dumpfilename = new File(Configuration.getDumpPrefix(), resource.replaceAll("\\p{Punct}", "_") + ".xml");
+        if (dumpfilename.exists()) {
+            Reader reader = null;
+            try {
+                InputStream stream = new FileInputStream(dumpfilename);
+                reader = new InputStreamReader(stream, UTF_8);
+                return parser.parse(reader, languages != null ? languages : LanguagePriorityList.ANY);
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                if (reader != null) {
+                    try {
+                        reader.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            }
+        }
+        return null;
+    }
 }
